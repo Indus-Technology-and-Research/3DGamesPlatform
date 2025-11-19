@@ -1,48 +1,20 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Sphere, Text } from '@react-three/drei'
+import { useRef, useState, useEffect } from 'react'
 import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { VRButton } from 'three/examples/jsm/webxr/VRButton.js'
 
-interface AtomProps {
-  position: [number, number, number]
-  element: string
-  color: string
-  scale?: number
+interface MoleculeBuilderProps {
+  onScoreUpdate: (score: number) => void
+  onComplete: (score: number) => void
 }
 
-function Atom({ position, element, color, scale = 1 }: AtomProps) {
-  const meshRef = useRef<THREE.Mesh>(null!)
-
-  useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.2
-    }
-  })
-
-  return (
-    <group position={position}>
-      <Sphere ref={meshRef} args={[0.5 * scale, 32, 32]}>
-        <meshStandardMaterial
-          color={color}
-          metalness={0.3}
-          roughness={0.4}
-          emissive={color}
-          emissiveIntensity={0.2}
-        />
-      </Sphere>
-      <Text
-        position={[0, 0.8 * scale, 0]}
-        fontSize={0.3}
-        color="white"
-        anchorX="center"
-        anchorY="middle"
-      >
-        {element}
-      </Text>
-    </group>
-  )
+interface Atom {
+  element: string
+  color: string
+  position: [number, number, number]
+  scale?: number
 }
 
 interface Bond {
@@ -50,20 +22,9 @@ interface Bond {
   end: [number, number, number]
 }
 
-function BondLine({ start, end }: Bond) {
-  const points = [new THREE.Vector3(...start), new THREE.Vector3(...end)]
-  const lineGeometry = new THREE.BufferGeometry().setFromPoints(points)
-
-  return (
-    <line geometry={lineGeometry}>
-      <lineBasicMaterial color="#ffffff" linewidth={2} />
-    </line>
-  )
-}
-
 interface Molecule {
   name: string
-  atoms: { element: string; color: string; position: [number, number, number]; scale?: number }[]
+  atoms: Atom[]
   bonds: Bond[]
 }
 
@@ -124,14 +85,211 @@ const molecules: { [key: string]: Molecule } = {
   },
 }
 
-interface MoleculeBuilderProps {
-  onScoreUpdate: (score: number) => void
-  onComplete: (score: number) => void
+// Create text sprite
+function createTextSprite(text: string): THREE.Sprite {
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')!
+  canvas.width = 256
+  canvas.height = 128
+
+  context.fillStyle = '#000000' // Black text for white background
+  context.font = 'Bold 80px Arial'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText(text, 128, 64)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  const spriteMaterial = new THREE.SpriteMaterial({ map: texture })
+  const sprite = new THREE.Sprite(spriteMaterial)
+  sprite.scale.set(0.6, 0.3, 1)
+
+  return sprite
 }
 
 export default function MoleculeBuilder({ onScoreUpdate, onComplete }: MoleculeBuilderProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const [currentMolecule, setCurrentMolecule] = useState<string>('water')
   const [viewedMolecules, setViewedMolecules] = useState<Set<string>>(new Set(['water']))
+
+  // Three.js refs
+  const sceneRef = useRef<THREE.Scene | null>(null)
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
+  const controlsRef = useRef<OrbitControls | null>(null)
+  const moleculeGroupRef = useRef<THREE.Group | null>(null)
+  const atomMeshesRef = useRef<THREE.Mesh[]>([])
+  const clockRef = useRef(new THREE.Clock())
+
+  useEffect(() => {
+    if (!containerRef.current) return
+
+    // Scene setup
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color(0xffffff) // White background
+    sceneRef.current = scene
+
+    // Camera setup
+    const camera = new THREE.PerspectiveCamera(
+      50,
+      containerRef.current.clientWidth / containerRef.current.clientHeight,
+      0.1,
+      1000
+    )
+    camera.position.set(0, 0, 8)
+    cameraRef.current = camera
+
+    // Renderer setup
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight)
+    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.xr.enabled = true // Enable WebXR
+    containerRef.current.appendChild(renderer.domElement)
+    rendererRef.current = renderer
+
+    // Add VR button
+    const vrButton = VRButton.createButton(renderer)
+    containerRef.current.appendChild(vrButton)
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+    scene.add(ambientLight)
+
+    const pointLight1 = new THREE.PointLight(0xffffff, 1)
+    pointLight1.position.set(10, 10, 10)
+    scene.add(pointLight1)
+
+    const pointLight2 = new THREE.PointLight(0xffffff, 0.5)
+    pointLight2.position.set(-10, -10, -10)
+    scene.add(pointLight2)
+
+    const spotLight = new THREE.SpotLight(0xffffff, 0.5)
+    spotLight.position.set(0, 10, 0)
+    scene.add(spotLight)
+
+    // Create molecule group
+    const moleculeGroup = new THREE.Group()
+    scene.add(moleculeGroup)
+    moleculeGroupRef.current = moleculeGroup
+
+    // OrbitControls
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enablePan = false
+    controls.enableZoom = true
+    controls.maxDistance = 15
+    controls.minDistance = 3
+    controlsRef.current = controls
+
+    // Animation loop
+    const animate = () => {
+      const elapsed = clockRef.current.getElapsedTime()
+
+      // Rotate atoms
+      atomMeshesRef.current.forEach((mesh) => {
+        mesh.rotation.y = elapsed * 0.2
+      })
+
+      controls.update()
+      renderer.render(scene, camera)
+    }
+
+    // Use setAnimationLoop for VR compatibility
+    renderer.setAnimationLoop(animate)
+
+    // Handle window resize
+    const handleResize = () => {
+      if (!containerRef.current) return
+      const width = containerRef.current.clientWidth
+      const height = containerRef.current.clientHeight
+
+      camera.aspect = width / height
+      camera.updateProjectionMatrix()
+      renderer.setSize(width, height)
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize)
+
+      renderer.setAnimationLoop(null)
+
+      controls.dispose()
+      renderer.dispose()
+
+      if (containerRef.current) {
+        const vrButton = containerRef.current.querySelector('button')
+        if (vrButton) containerRef.current.removeChild(vrButton)
+        if (renderer.domElement && containerRef.current.contains(renderer.domElement)) {
+          containerRef.current.removeChild(renderer.domElement)
+        }
+      }
+    }
+  }, [])
+
+  // Update molecule when selection changes
+  useEffect(() => {
+    if (!moleculeGroupRef.current) return
+
+    const moleculeGroup = moleculeGroupRef.current
+    const molecule = molecules[currentMolecule]
+
+    // Clear previous molecule
+    while (moleculeGroup.children.length > 0) {
+      const child = moleculeGroup.children[0]
+      moleculeGroup.remove(child)
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose()
+        if (child.material instanceof THREE.Material) {
+          child.material.dispose()
+        }
+      } else if (child instanceof THREE.Line) {
+        child.geometry.dispose()
+        if (child.material instanceof THREE.Material) {
+          child.material.dispose()
+        }
+      } else if (child instanceof THREE.Sprite) {
+        if (child.material instanceof THREE.Material) {
+          child.material.dispose()
+        }
+      }
+    }
+    atomMeshesRef.current = []
+
+    // Create bonds (render first so they appear behind atoms)
+    molecule.bonds.forEach((bond) => {
+      const points = [
+        new THREE.Vector3(...bond.start),
+        new THREE.Vector3(...bond.end),
+      ]
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points)
+      const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
+      const line = new THREE.Line(lineGeometry, lineMaterial)
+      moleculeGroup.add(line)
+    })
+
+    // Create atoms
+    molecule.atoms.forEach((atom) => {
+      const scale = atom.scale || 1
+      const sphereGeometry = new THREE.SphereGeometry(0.5 * scale, 32, 32)
+      const sphereMaterial = new THREE.MeshStandardMaterial({
+        color: atom.color,
+        metalness: 0.3,
+        roughness: 0.4,
+        emissive: atom.color,
+        emissiveIntensity: 0.2,
+      })
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial)
+      sphere.position.set(...atom.position)
+      moleculeGroup.add(sphere)
+      atomMeshesRef.current.push(sphere)
+
+      // Create text label
+      const textSprite = createTextSprite(atom.element)
+      textSprite.position.set(atom.position[0], atom.position[1] + 0.8 * scale, atom.position[2])
+      moleculeGroup.add(textSprite)
+    })
+  }, [currentMolecule])
 
   const handleMoleculeChange = (moleculeKey: string) => {
     setCurrentMolecule(moleculeKey)
@@ -153,40 +311,12 @@ export default function MoleculeBuilder({ onScoreUpdate, onComplete }: MoleculeB
 
   return (
     <div className="w-full h-[600px] relative">
-      <Canvas camera={{ position: [0, 0, 8], fov: 50 }}>
-        <ambientLight intensity={0.6} />
-        <pointLight position={[10, 10, 10]} intensity={1} />
-        <pointLight position={[-10, -10, -10]} intensity={0.5} />
-        <spotLight position={[0, 10, 0]} intensity={0.5} />
-
-        {/* Render Molecule */}
-        {molecule && (
-          <group>
-            {/* Bonds */}
-            {molecule.bonds.map((bond, idx) => (
-              <BondLine key={`bond-${idx}`} start={bond.start} end={bond.end} />
-            ))}
-
-            {/* Atoms */}
-            {molecule.atoms.map((atom, idx) => (
-              <Atom
-                key={`atom-${idx}`}
-                position={atom.position}
-                element={atom.element}
-                color={atom.color}
-                scale={atom.scale}
-              />
-            ))}
-          </group>
-        )}
-
-        <OrbitControls enablePan={false} enableZoom={true} maxDistance={15} minDistance={3} />
-      </Canvas>
+      <div ref={containerRef} className="w-full h-full" />
 
       {/* Molecule Selector */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-gray-300 shadow-lg">
         <div className="flex flex-col gap-3">
-          <div className="text-center text-white font-bold">
+          <div className="text-center text-gray-900 font-bold">
             {molecule.name}
           </div>
           <div className="flex gap-2">
@@ -207,19 +337,19 @@ export default function MoleculeBuilder({ onScoreUpdate, onComplete }: MoleculeB
               </button>
             ))}
           </div>
-          <div className="text-center text-sm text-gray-300">
+          <div className="text-center text-sm text-gray-700">
             Explored: {viewedMolecules.size}/{Object.keys(molecules).length} molecules
           </div>
         </div>
       </div>
 
       {/* Instructions */}
-      <div className="absolute top-4 left-4 bg-black/70 backdrop-blur-sm rounded-lg p-4 border border-white/20 max-w-xs">
-        <h3 className="text-white font-bold mb-2">Molecule Explorer</h3>
-        <p className="text-gray-300 text-sm mb-2">
+      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-gray-300 shadow-lg max-w-xs">
+        <h3 className="text-gray-900 font-bold mb-2">Molecule Explorer</h3>
+        <p className="text-gray-700 text-sm mb-2">
           Explore different molecular structures in 3D! Drag to rotate and scroll to zoom.
         </p>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-gray-600">
           <p>🔴 Red = Oxygen (O)</p>
           <p>⚪ White = Hydrogen (H)</p>
           <p>⚫ Gray = Carbon (C)</p>
