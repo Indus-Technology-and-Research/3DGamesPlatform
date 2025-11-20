@@ -82,7 +82,7 @@ export default async function MyGradesPage() {
   const subjects = Object.values(subjectStats) as any[]
 
   // Score trends (last 7 days)
-  const scoreTrendData = generateScoreTrendData(progressData)
+  const scoreTrendData = generateScoreTrendData(progressData || [])
 
   // Subject distribution (time spent)
   const distributionData = subjects.map(s => ({
@@ -92,10 +92,10 @@ export default async function MyGradesPage() {
   }))
 
   // Performance by difficulty
-  const performanceData = generatePerformanceByDifficulty(progressData)
+  const performanceData = generatePerformanceByDifficulty(progressData || [])
 
   // Weekly activity
-  const weeklyData = generateWeeklyActivity(progressData)
+  const weeklyData = generateWeeklyActivity(progressData || [])
 
   return (
     <div className="space-y-8">
