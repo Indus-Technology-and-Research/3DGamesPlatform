@@ -83,16 +83,6 @@ ON CONFLICT (name) DO NOTHING;
 -- Insert sample games
 INSERT INTO public.games (title, description, subject_id, grade_id, game_type, difficulty_level, learning_objectives, estimated_time) VALUES
 (
-    'Newton''s Cradle Simulator',
-    'Interactive 3D physics simulation demonstrating conservation of momentum and energy',
-    (SELECT id FROM public.subjects WHERE name = 'Physics'),
-    (SELECT id FROM public.grades WHERE grade_number = 9),
-    'threejs',
-    'easy',
-    ARRAY['Understand conservation of momentum', 'Observe energy transfer', 'Learn about elastic collisions'],
-    10
-),
-(
     'Molecule Builder 3D',
     'Build and visualize 3D molecular structures of common compounds',
     (SELECT id FROM public.subjects WHERE name = 'Chemistry'),
@@ -100,6 +90,16 @@ INSERT INTO public.games (title, description, subject_id, grade_id, game_type, d
     'threejs',
     'medium',
     ARRAY['Learn molecular geometry', 'Understand chemical bonds', 'Identify common molecules'],
+    15
+),
+(
+    'Projectile Motion Simulator',
+    'Learn projectile motion by launching paper balls into a dustbin at various distances',
+    (SELECT id FROM public.subjects WHERE name = 'Physics'),
+    (SELECT id FROM public.grades WHERE grade_number = 9),
+    'threejs',
+    'easy',
+    ARRAY['Understand projectile motion', 'Apply kinematic equations', 'Visualize parabolic trajectories', 'Calculate launch angle and velocity'],
     15
 )
 ON CONFLICT DO NOTHING;

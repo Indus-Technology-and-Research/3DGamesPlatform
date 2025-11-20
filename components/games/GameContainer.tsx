@@ -5,8 +5,8 @@ import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 
 // Dynamically import games to avoid SSR issues with Three.js
-const NewtonsCradle = dynamic(() => import('./NewtonsCradle'), { ssr: false })
 const MoleculeBuilder = dynamic(() => import('./MoleculeBuilder'), { ssr: false })
+const ProjectileMotion = dynamic(() => import('./ProjectileMotion'), { ssr: false })
 
 interface GameContainerProps {
   gameId: number
@@ -86,10 +86,10 @@ export default function GameContainer({ gameId, gameTitle, userId }: GameContain
   // Render the appropriate game based on gameId
   const renderGame = () => {
     switch (gameId) {
-      case 1:
-        return <NewtonsCradle onScoreUpdate={handleScoreUpdate} onComplete={handleComplete} />
       case 2:
         return <MoleculeBuilder onScoreUpdate={handleScoreUpdate} onComplete={handleComplete} />
+      case 3:
+        return <ProjectileMotion onScoreUpdate={handleScoreUpdate} onComplete={handleComplete} />
       default:
         return (
           <div className="bg-white/5 backdrop-blur-sm rounded-xl p-12 border border-white/10 text-center">
