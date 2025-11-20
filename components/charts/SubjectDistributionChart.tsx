@@ -6,6 +6,7 @@ interface SubjectData {
   name: string
   value: number // time spent in hours
   color: string
+  [key: string]: string | number // Index signature for Recharts compatibility
 }
 
 interface SubjectDistributionChartProps {
