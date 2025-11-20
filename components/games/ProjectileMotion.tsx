@@ -32,7 +32,7 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
     if (!containerRef.current) return
 
     // Dispatch event to update trajectory
-    window.dispatchEvent(new CustomEvent('updateTrajectory', { detail: { angle, velocity } }))
+    window.dispatchEvent(new CustomEvent('updateTrajectory', { detail: { angle, velocity, show: showTrajectory } }))
   }, [angle, velocity, showTrajectory])
 
   // Separate effect for dustbin distance changes
@@ -484,16 +484,17 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
     // Listen for trajectory update event
     const handleUpdateTrajectory = (e: Event) => {
       const customEvent = e as CustomEvent
-      const { angle: newAngle, velocity: newVelocity } = customEvent.detail
+      const { angle: newAngle, velocity: newVelocity, show } = customEvent.detail
 
       // Update trajectory line with new values
       if (trajectoryLine) {
         scene.remove(trajectoryLine)
         trajectoryLine.geometry.dispose()
         ;(trajectoryLine.material as THREE.Material).dispose()
+        trajectoryLine = null
       }
 
-      if (!showTrajectory) return
+      if (!show) return
 
       const g = 9.81
       const angleRad = (newAngle * Math.PI) / 180
