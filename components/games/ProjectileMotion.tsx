@@ -734,7 +734,8 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
       if (!session) return
 
       // Get gamepad input from controllers
-      for (const source of session.inputSources) {
+      const inputSources = Array.from(session.inputSources)
+      for (const source of inputSources) {
         if (source.gamepad) {
           const gamepad = source.gamepad
 
