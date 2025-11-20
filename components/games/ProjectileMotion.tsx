@@ -4,6 +4,7 @@ import { useRef, useState, useEffect } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js'
+import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory.js'
 
 interface ProjectileMotionProps {
   onScoreUpdate: (score: number) => void
@@ -54,6 +55,10 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
     let isPhysicsReady = false
     let launchStartTime = 0
     let maxHeightReached = 0
+    let vrAngle = 45
+    let vrVelocity = 15
+    let controller1: THREE.XRTargetRaySpace | null = null
+    let controller2: THREE.XRTargetRaySpace | null = null
 
     // Scene setup
     const scene = new THREE.Scene()
@@ -113,13 +118,160 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
     const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0xcccccc)
     scene.add(gridHelper)
 
-    // OrbitControls
+    // OrbitControls (for non-VR mode)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enablePan = false
     controls.minDistance = 10
     controls.maxDistance = 50
     controls.maxPolarAngle = Math.PI / 2 - 0.1
     controls.update()
+
+    // VR Controllers
+    const controllerModelFactory = new XRControllerModelFactory()
+
+    // Controller 1 (right hand)
+    controller1 = renderer.xr.getController(0)
+    controller1.addEventListener('selectstart', onSelectStart)
+    controller1.addEventListener('selectend', onSelectEnd)
+    scene.add(controller1)
+
+    const controllerGrip1 = renderer.xr.getControllerGrip(0)
+    controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1))
+    scene.add(controllerGrip1)
+
+    // Controller 2 (left hand)
+    controller2 = renderer.xr.getController(1)
+    scene.add(controller2)
+
+    const controllerGrip2 = renderer.xr.getControllerGrip(1)
+    controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2))
+    scene.add(controllerGrip2)
+
+    // Add line to controllers to show pointing direction
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, -1)
+    ])
+    const line = new THREE.Line(geometry)
+    line.name = 'line'
+    line.scale.z = 5
+    controller1.add(line.clone())
+    controller2.add(line.clone())
+
+    // VR Control Functions
+    function onSelectStart(event: any) {
+      const controller = event.target
+      // Launch ball in VR when trigger is pressed
+      if (!isLaunchedRef.current && isPhysicsReady) {
+        launchBall(vrAngle, vrVelocity)
+      }
+    }
+
+    function onSelectEnd(event: any) {
+      // Optional: handle trigger release
+    }
+
+    // VR UI panels (will show angle and velocity controls in VR)
+    const createVRPanel = () => {
+      const panel = new THREE.Group()
+
+      // Panel background
+      const panelGeo = new THREE.PlaneGeometry(1.5, 1)
+      const panelMat = new THREE.MeshBasicMaterial({
+        color: 0x111111,
+        opacity: 0.8,
+        transparent: true
+      })
+      const panelMesh = new THREE.Mesh(panelGeo, panelMat)
+      panel.add(panelMesh)
+
+      // Add text for angle
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')!
+      canvas.width = 512
+      canvas.height = 256
+
+      const texture = new THREE.CanvasTexture(canvas)
+      const textMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true })
+      const textGeo = new THREE.PlaneGeometry(1.4, 0.9)
+      const textMesh = new THREE.Mesh(textGeo, textMat)
+      textMesh.position.z = 0.01
+      panel.add(textMesh)
+
+      // Update function for VR panel
+      panel.userData.updateText = () => {
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        context.fillStyle = '#ffffff'
+        context.font = 'bold 40px Arial'
+        context.textAlign = 'center'
+
+        context.fillText('Launch Controls', 256, 60)
+        context.font = '32px Arial'
+        context.fillText(`Angle: ${vrAngle.toFixed(0)}°`, 256, 120)
+        context.fillText(`Velocity: ${vrVelocity.toFixed(1)} m/s`, 256, 170)
+        context.fillText('Press Trigger to Launch', 256, 230)
+
+        texture.needsUpdate = true
+      }
+
+      panel.userData.updateText()
+      panel.position.set(2, 1.5, 0)
+      panel.rotation.y = -Math.PI / 4
+
+      return panel
+    }
+
+    const vrPanel = createVRPanel()
+    scene.add(vrPanel)
+
+    // Create VR score panel
+    const createVRScorePanel = () => {
+      const panel = new THREE.Group()
+
+      const panelGeo = new THREE.PlaneGeometry(1.2, 0.6)
+      const panelMat = new THREE.MeshBasicMaterial({
+        color: 0x0a0a0a,
+        opacity: 0.9,
+        transparent: true
+      })
+      const panelMesh = new THREE.Mesh(panelGeo, panelMat)
+      panel.add(panelMesh)
+
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')!
+      canvas.width = 512
+      canvas.height = 256
+
+      const texture = new THREE.CanvasTexture(canvas)
+      const textMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true })
+      const textGeo = new THREE.PlaneGeometry(1.1, 0.55)
+      const textMesh = new THREE.Mesh(textGeo, textMat)
+      textMesh.position.z = 0.01
+      panel.add(textMesh)
+
+      panel.userData.updateScore = (count: number, distance: number) => {
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        context.fillStyle = '#00ff00'
+        context.font = 'bold 50px Arial'
+        context.textAlign = 'center'
+
+        context.fillText(`Success: ${count}/5`, 256, 100)
+        context.fillStyle = '#ffffff'
+        context.font = '32px Arial'
+        context.fillText(`Dustbin: ${distance.toFixed(1)}m`, 256, 160)
+
+        texture.needsUpdate = true
+      }
+
+      panel.userData.updateScore(0, dustbinDistance)
+      panel.position.set(-2, 1.5, 0)
+      panel.rotation.y = Math.PI / 4
+
+      return panel
+    }
+
+    const vrScorePanel = createVRScorePanel()
+    scene.add(vrScorePanel)
 
     // Initialize Ammo.js and create physics world
     async function initPhysics() {
@@ -451,6 +603,9 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
             onScoreUpdate(newScore)
             setMessage('Success! 🎉')
 
+            // Update VR score panel
+            vrScorePanel.userData.updateScore(newCount, dustbinDistance)
+
             if (newCount >= 5) {
               setTimeout(() => onComplete(100), 1000)
             } else {
@@ -458,6 +613,9 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
               setTimeout(() => {
                 const newDistance = 10 + Math.random() * 15 // 10-25m
                 setDustbinDistance(newDistance)
+
+                // Update VR panel with new distance
+                vrScorePanel.userData.updateScore(newCount, newDistance)
 
                 // Use event to trigger reset from React
                 window.dispatchEvent(new CustomEvent('requestReset'))
@@ -568,6 +726,39 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
     }
     window.addEventListener('resetBall', handleResetBallEvent)
 
+    // VR controller input handling
+    function handleVRControllerInput() {
+      if (!renderer.xr.isPresenting) return
+
+      const session = renderer.xr.getSession()
+      if (!session) return
+
+      // Get gamepad input from controllers
+      for (const source of session.inputSources) {
+        if (source.gamepad) {
+          const gamepad = source.gamepad
+
+          // Right controller (index 0) - adjust angle with thumbstick Y-axis
+          if (source.handedness === 'right' && gamepad.axes.length >= 2) {
+            const thumbstickY = gamepad.axes[3] || gamepad.axes[1] // Try different axis indices
+            if (Math.abs(thumbstickY) > 0.1) {
+              vrAngle = Math.max(0, Math.min(90, vrAngle - thumbstickY * 2))
+              vrPanel.userData.updateText()
+            }
+          }
+
+          // Left controller (index 1) - adjust velocity with thumbstick Y-axis
+          if (source.handedness === 'left' && gamepad.axes.length >= 2) {
+            const thumbstickY = gamepad.axes[3] || gamepad.axes[1]
+            if (Math.abs(thumbstickY) > 0.1) {
+              vrVelocity = Math.max(5, Math.min(30, vrVelocity - thumbstickY * 0.5))
+              vrPanel.userData.updateText()
+            }
+          }
+        }
+      }
+    }
+
     // Animation loop
     const clock = new THREE.Clock()
 
@@ -577,6 +768,9 @@ export default function ProjectileMotion({ onScoreUpdate, onComplete }: Projecti
         physicsWorld.stepSimulation(deltaTime, 10)
         updatePhysics()
       }
+
+      // Handle VR controller input
+      handleVRControllerInput()
 
       controls.update()
       renderer.render(scene, camera)
