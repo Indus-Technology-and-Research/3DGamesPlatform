@@ -97,9 +97,14 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
   const bacteriaRef = useRef<Bacteria[]>([])
   const badBacteriaRef = useRef<Bacteria[]>([]) // Track bad bacteria separately
   const projectilesRef = useRef<Projectile[]>([])
+  const villiColliders = useRef<{ x: number; z: number; radius: number }[]>([]) // Villi collision data
   const isPointerLockedRef = useRef(false)
   const playerPositionRef = useRef(new THREE.Vector3(0, 1.6, 0))
   const scoreRef = useRef(0) // Track score in ref for respawn check
+
+  // Wall boundaries
+  const WALL_BOUNDS = { minX: -48, maxX: 48, minZ: -48, maxZ: 48 } // Slightly inside walls
+  const PLAYER_RADIUS = 0.5 // Player collision radius
 
   const [score, setScore] = useState(0)
   const [bacteriaKilled, setBacteriaKilled] = useState(0)
@@ -356,6 +361,7 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
       }
 
       // Add villi (intestinal finger-like projections) instead of pillars
+      villiColliders.current = [] // Clear previous colliders
       for (let i = 0; i < 25; i++) {
         const angle = Math.random() * Math.PI * 2
         const radius = 10 + Math.random() * 35
@@ -365,6 +371,9 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         // Villus - finger-like projection
         const villusHeight = 2 + Math.random() * 4
         const villusRadius = 0.4 + Math.random() * 0.4
+
+        // Store collision data
+        villiColliders.current.push({ x, z, radius: villusRadius + PLAYER_RADIUS })
 
         // Create villus using capsule-like shape
         const villusGeom = new THREE.CapsuleGeometry(villusRadius, villusHeight, 8, 16)
@@ -715,6 +724,27 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
       }
     }
 
+    // Check collision with villi (cylindrical pillars)
+    function checkVilliCollision(newX: number, newZ: number): { x: number; z: number } {
+      let adjustedX = newX
+      let adjustedZ = newZ
+
+      for (const villus of villiColliders.current) {
+        const dx = newX - villus.x
+        const dz = newZ - villus.z
+        const distance = Math.sqrt(dx * dx + dz * dz)
+
+        if (distance < villus.radius) {
+          // Push player out of the villus
+          const pushDirection = { x: dx / distance, z: dz / distance }
+          adjustedX = villus.x + pushDirection.x * villus.radius
+          adjustedZ = villus.z + pushDirection.z * villus.radius
+        }
+      }
+
+      return { x: adjustedX, z: adjustedZ }
+    }
+
     // Update player movement
     function updatePlayer(deltaTime: number) {
       if (!cameraRef.current || !isPointerLockedRef.current) return
@@ -733,7 +763,26 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         moveVector.applyQuaternion(cameraRef.current.quaternion)
         moveVector.y = 0 // Keep on ground level
 
-        cameraRef.current.position.add(moveVector)
+        // Calculate new position
+        let newX = cameraRef.current.position.x + moveVector.x
+        let newZ = cameraRef.current.position.z + moveVector.z
+
+        // Wall collision - clamp to bounds
+        newX = Math.max(WALL_BOUNDS.minX, Math.min(WALL_BOUNDS.maxX, newX))
+        newZ = Math.max(WALL_BOUNDS.minZ, Math.min(WALL_BOUNDS.maxZ, newZ))
+
+        // Villi collision - push out if inside
+        const adjusted = checkVilliCollision(newX, newZ)
+        newX = adjusted.x
+        newZ = adjusted.z
+
+        // Re-clamp after villi push (in case pushed into wall)
+        newX = Math.max(WALL_BOUNDS.minX, Math.min(WALL_BOUNDS.maxX, newX))
+        newZ = Math.max(WALL_BOUNDS.minZ, Math.min(WALL_BOUNDS.maxZ, newZ))
+
+        // Apply final position
+        cameraRef.current.position.x = newX
+        cameraRef.current.position.z = newZ
         playerPositionRef.current.copy(cameraRef.current.position)
       }
     }
