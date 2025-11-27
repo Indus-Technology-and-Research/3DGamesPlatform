@@ -112,6 +112,27 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
   const [currentFact, setCurrentFact] = useState<string | null>(null)
   const [isPointerLocked, setIsPointerLocked] = useState(false)
   const [gameComplete, setGameComplete] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Toggle fullscreen mode
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.parentElement?.requestFullscreen()
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }
+
+  // Listen for fullscreen changes (e.g., user presses ESC)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
 
   // Show educational fact popup
   const showFact = (fact: string) => {
@@ -201,7 +222,12 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
       )
     }
 
-    const handleClick = () => {
+    const handleClick = (e: MouseEvent) => {
+      // Ignore clicks on buttons or other interactive elements
+      const target = e.target as HTMLElement
+      if (target.closest('button')) {
+        return
+      }
       if (!isPointerLockedRef.current) {
         containerRef.current?.requestPointerLock()
       } else {
@@ -1034,33 +1060,43 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
 
 
   return (
-    <div className="w-full h-[600px] relative select-none">
-      <div ref={containerRef} className="w-full h-full cursor-crosshair" />
+    <div className="w-full select-none">
+      {/* Game Viewport */}
+      <div className={`w-full relative bg-black ${isFullscreen ? 'h-screen' : 'h-[600px]'}`}>
+        <div ref={containerRef} className="w-full h-full cursor-crosshair" />
 
-      {/* Score Display */}
-      <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-gray-300 shadow-lg">
-        <p className="text-gray-600 text-sm">Score</p>
-        <p className="text-3xl font-bold text-cyan-600">{score}</p>
-        <p className="text-gray-500 text-xs mt-2">
-          Bacteria: {bacteriaKilled}/{totalBacteria}
-        </p>
-      </div>
-
-      {/* Controls Help */}
-      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-gray-300 shadow-lg max-w-xs">
-        <h3 className="text-gray-900 font-bold mb-2">Gut Defender</h3>
-        <p className="text-gray-700 text-sm mb-3">
-          Explore the digestive system and eliminate harmful bacteria!
-        </p>
-        <div className="text-xs text-gray-600 space-y-1">
-          <p><span className="font-semibold">WASD</span> - Move</p>
-          <p><span className="font-semibold">Mouse</span> - Look around</p>
-          <p><span className="font-semibold">Click</span> - Shoot antibodies</p>
-          <p><span className="font-semibold">ESC</span> - Release cursor</p>
+        {/* Score Display */}
+        <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-gray-300 shadow-lg">
+          <p className="text-gray-600 text-sm">Score</p>
+          <p className="text-3xl font-bold text-cyan-600">{score}</p>
+          <p className="text-gray-500 text-xs mt-2">
+            Bacteria: {bacteriaKilled}/{totalBacteria}
+          </p>
         </div>
-      </div>
 
-      {/* Crosshair */}
+        {/* Fullscreen Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            e.preventDefault()
+            toggleFullscreen()
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-2 border border-gray-300 shadow-lg hover:bg-white transition-colors z-10"
+          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+        >
+          {isFullscreen ? (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          )}
+        </button>
+
+        {/* Crosshair */}
       {isPointerLocked && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="w-6 h-6 border-2 border-cyan-400 rounded-full opacity-75" />
@@ -1089,48 +1125,45 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         </div>
       )}
 
-      {/* Game Complete */}
-      {gameComplete && (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-          <div className="bg-white rounded-xl p-8 text-center max-w-sm">
-            <div className="text-5xl mb-4">🎉</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Gut Defended!</h2>
-            <p className="text-gray-600 mb-4">
-              You eliminated {bacteriaKilled} harmful bacteria and protected the digestive system!
-            </p>
-            <p className="text-3xl font-bold text-cyan-600">Score: {score}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Bacteria Types Legend */}
-      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 border border-gray-300 shadow-lg">
-        <p className="text-xs text-gray-500 mb-2">Reach 100 points to win!</p>
-        <div className="space-y-2 text-xs">
-          <div>
-            <p className="text-red-600 font-semibold mb-1">BAD - Shoot these! (+10 pts)</p>
-            <div className="flex gap-3">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff4444' }} />
-                <span className="text-gray-700">Salmonella</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff8800' }} />
-                <span className="text-gray-700">H. pylori</span>
-              </div>
+        {/* Game Complete */}
+        {gameComplete && (
+          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+            <div className="bg-white rounded-xl p-8 text-center max-w-sm">
+              <div className="text-5xl mb-4">🎉</div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Gut Defended!</h2>
+              <p className="text-gray-600 mb-4">
+                You eliminated {bacteriaKilled} harmful bacteria and protected the digestive system!
+              </p>
+              <p className="text-3xl font-bold text-cyan-600">Score: {score}</p>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* Controls Help - Below game viewport */}
+      <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-green-600 font-semibold mb-1">GOOD - Don&apos;t shoot! (-10 pts)</p>
-            <div className="flex gap-3">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#44dd44' }} />
-                <span className="text-gray-700">E. coli</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#44ccdd' }} />
-                <span className="text-gray-700">Lactobacillus</span>
-              </div>
+            <h3 className="text-white font-bold mb-2">Gut Defender</h3>
+            <p className="text-gray-300 text-sm">
+              Explore the digestive system and eliminate harmful bacteria!
+            </p>
+          </div>
+          <div className="flex gap-6 text-sm text-gray-300">
+            <div className="space-y-1">
+              <p><span className="font-semibold text-white">WASD</span> - Move</p>
+              <p><span className="font-semibold text-white">Mouse</span> - Look around</p>
+            </div>
+            <div className="space-y-1">
+              <p><span className="font-semibold text-white">Click</span> - Shoot antibodies</p>
+              <p><span className="font-semibold text-white">ESC</span> - Release cursor</p>
+            </div>
+          </div>
+          <div className="text-sm">
+            <p className="text-gray-400 mb-2">Reach 100 points to win!</p>
+            <div className="space-y-1">
+              <p className="text-red-400"><span className="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>Bad bacteria: +10 pts</p>
+              <p className="text-green-400"><span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>Good bacteria: -10 pts</p>
             </div>
           </div>
         </div>
