@@ -586,7 +586,7 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         // Random position in room
         const spawnPos = room.position.clone()
         spawnPos.x += (Math.random() - 0.5) * (room.size.width - 2)
-        spawnPos.y = 1 + Math.random() * 2
+        spawnPos.y = 0.5 + Math.random() * 0.7 // Spawn below eye level (0.5 to 1.2)
         spawnPos.z += (Math.random() - 0.5) * (room.size.depth - 2)
 
         group.position.copy(spawnPos)
@@ -683,7 +683,7 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
       const distance = 15 + Math.random() * 25
       group.position.set(
         Math.cos(angle) * distance,
-        1 + Math.random() * 2,
+        0.5 + Math.random() * 0.7, // Spawn below eye level (0.5 to 1.2)
         Math.sin(angle) * distance
       )
       group.scale.setScalar(type.scale)
@@ -788,6 +788,8 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
     }
 
     // Update bacteria behavior
+    const MIN_DISTANCE_TO_PLAYER = 3 // Bacteria stop this far from player (so player can see them)
+
     function updateBacteria(deltaTime: number) {
       if (!cameraRef.current) return
 
@@ -797,6 +799,11 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         if (bacteria.health <= 0) return
 
         bacteria.wanderTimer -= deltaTime
+
+        // Calculate distance to player (horizontal only)
+        const dx = bacteria.mesh.position.x - playerPos.x
+        const dz = bacteria.mesh.position.z - playerPos.z
+        const distToPlayer = Math.sqrt(dx * dx + dz * dz)
 
         if (bacteria.type.behavior === 'wander') {
           // Wander randomly
@@ -814,11 +821,17 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
           const direction = bacteria.targetPosition.clone().sub(bacteria.mesh.position).normalize()
           bacteria.velocity.lerp(direction.multiplyScalar(bacteria.type.speed), 0.02)
         } else if (bacteria.type.behavior === 'chase') {
-          // Chase player if close enough
-          const distToPlayer = bacteria.mesh.position.distanceTo(playerPos)
-          if (distToPlayer < 15) {
+          // Chase player if close enough, but stop at minimum distance
+          if (distToPlayer < 15 && distToPlayer > MIN_DISTANCE_TO_PLAYER) {
             const direction = playerPos.clone().sub(bacteria.mesh.position).normalize()
+            direction.y = 0 // Keep horizontal
             bacteria.velocity.lerp(direction.multiplyScalar(bacteria.type.speed), 0.05)
+          } else if (distToPlayer <= MIN_DISTANCE_TO_PLAYER) {
+            // Too close - stop or circle around player
+            bacteria.velocity.multiplyScalar(0.9) // Slow down
+            // Circle strafe around player
+            const tangent = new THREE.Vector3(-dz, 0, dx).normalize()
+            bacteria.velocity.lerp(tangent.multiplyScalar(bacteria.type.speed * 0.5), 0.02)
           } else {
             // Wander when far from player
             if (bacteria.wanderTimer <= 0 || !bacteria.targetPosition) {
@@ -840,8 +853,8 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         // Apply velocity
         bacteria.mesh.position.add(bacteria.velocity.clone().multiplyScalar(deltaTime))
 
-        // Keep in bounds (y between 0.5 and 5)
-        bacteria.mesh.position.y = Math.max(0.5, Math.min(5, bacteria.mesh.position.y))
+        // Keep bacteria at lower height (below player eye level at 1.6)
+        bacteria.mesh.position.y = Math.max(0.5, Math.min(1.2, bacteria.mesh.position.y))
 
         // Rotate bacteria for visual effect
         bacteria.mesh.rotation.y += deltaTime * 0.5
