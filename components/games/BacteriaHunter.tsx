@@ -21,25 +21,47 @@ interface BacteriaType {
 }
 
 const BACTERIA_TYPES: Record<string, BacteriaType> = {
+  // GOOD bacteria (penalty for killing)
   ecoli: {
-    name: 'E. coli',
-    color: 0x88ff88,
-    speed: 2,
+    name: 'E. coli (Good)',
+    color: 0x44dd44, // Bright green = good
+    speed: 1.5,
     health: 1,
-    points: 10,
+    points: -10, // Penalty for killing good bacteria!
     behavior: 'wander',
-    fact: 'E. coli normally lives harmlessly in your intestines!',
+    fact: 'Oops! E. coli is helpful - it makes vitamin K and protects your gut!',
     scale: 0.4
   },
-  streptococcus: {
-    name: 'Streptococcus',
-    color: 0xff88ff,
-    speed: 3,
-    health: 2,
-    points: 25,
-    behavior: 'chase',
-    fact: 'Streptococcus forms chains and can cause strep throat!',
+  lactobacillus: {
+    name: 'Lactobacillus (Good)',
+    color: 0x44ccdd, // Cyan = good
+    speed: 1,
+    health: 1,
+    points: -10, // Penalty
+    behavior: 'wander',
+    fact: 'Oops! Lactobacillus helps digest food and fights bad bacteria!',
     scale: 0.35
+  },
+  // BAD bacteria (points for killing)
+  salmonella: {
+    name: 'Salmonella (Bad)',
+    color: 0xff4444, // Red = bad
+    speed: 3,
+    health: 1,
+    points: 10, // Reward for killing
+    behavior: 'chase',
+    fact: 'Nice! Salmonella causes food poisoning - good riddance!',
+    scale: 0.45
+  },
+  hpylori: {
+    name: 'H. pylori (Bad)',
+    color: 0xff8800, // Orange = bad
+    speed: 2.5,
+    health: 2,
+    points: 10, // Reward
+    behavior: 'chase',
+    fact: 'Great! H. pylori can cause stomach ulcers - eliminated!',
+    scale: 0.4
   }
 }
 
@@ -93,10 +115,10 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Scene setup
+    // Scene setup - Stomach/Intestine environment
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x220000) // Dark red bloodstream
-    scene.fog = new THREE.FogExp2(0x330000, 0.025) // Atmospheric fog
+    scene.background = new THREE.Color(0x4a2020) // Dark pinkish interior
+    scene.fog = new THREE.FogExp2(0x3d2525, 0.02) // Warm atmospheric fog
     sceneRef.current = scene
 
     // Camera (First Person)
@@ -118,16 +140,22 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
     containerRef.current.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xff6666, 0.4)
+    // Lighting - warm pinkish for stomach interior
+    const ambientLight = new THREE.AmbientLight(0xffaaaa, 0.5)
     scene.add(ambientLight)
 
-    const pointLight = new THREE.PointLight(0xff4444, 1, 30)
-    pointLight.position.set(0, 5, 0)
+    // Main light - warm pink
+    const pointLight = new THREE.PointLight(0xffcccc, 0.8, 40)
+    pointLight.position.set(0, 8, 0)
     scene.add(pointLight)
 
+    // Acid glow - slight green tint
+    const acidLight = new THREE.PointLight(0xaaff99, 0.3, 50)
+    acidLight.position.set(0, 2, 0)
+    scene.add(acidLight)
+
     // Player light (follows camera)
-    const playerLight = new THREE.PointLight(0xffffff, 0.5, 15)
+    const playerLight = new THREE.PointLight(0xffffff, 0.4, 12)
     camera.add(playerLight)
     scene.add(camera)
 
@@ -216,179 +244,235 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
       })
     }
 
-    // Generate level rooms
+    // Generate level rooms - simple open areas
     function generateLevel(): Room[] {
       const rooms: Room[] = []
 
-      // Spawn room (center, no bacteria)
+      // Main spawn area
       rooms.push({
         position: new THREE.Vector3(0, 0, 0),
-        size: { width: 12, height: 6, depth: 12 },
+        size: { width: 30, height: 10, depth: 30 },
         hasBacteria: false
       })
 
-      // Generate connected rooms
-      const directions = [
-        new THREE.Vector3(0, 0, -20),  // Forward
-        new THREE.Vector3(20, 0, 0),   // Right
-        new THREE.Vector3(-20, 0, 0),  // Left
-        new THREE.Vector3(0, 0, -40),  // Far forward
-      ]
+      // Additional areas for bacteria
+      rooms.push({
+        position: new THREE.Vector3(0, 0, -20),
+        size: { width: 20, height: 10, depth: 20 },
+        hasBacteria: true
+      })
 
-      directions.forEach((dir, i) => {
-        rooms.push({
-          position: dir.clone(),
-          size: {
-            width: 10 + Math.random() * 6,
-            height: 5 + Math.random() * 3,
-            depth: 10 + Math.random() * 6
-          },
-          hasBacteria: true
-        })
+      rooms.push({
+        position: new THREE.Vector3(20, 0, 0),
+        size: { width: 20, height: 10, depth: 20 },
+        hasBacteria: true
+      })
+
+      rooms.push({
+        position: new THREE.Vector3(-20, 0, 0),
+        size: { width: 20, height: 10, depth: 20 },
+        hasBacteria: true
+      })
+
+      rooms.push({
+        position: new THREE.Vector3(0, 0, 20),
+        size: { width: 20, height: 10, depth: 20 },
+        hasBacteria: true
       })
 
       return rooms
     }
 
-    // Create visual geometry for level
+    // Create visual geometry for level - Stomach/Intestine environment
     function createLevelGeometry(scene: THREE.Scene, rooms: Room[]) {
-      const wallMaterial = new THREE.MeshStandardMaterial({
-        color: 0xaa3333,
-        roughness: 0.9,
-        metalness: 0.1,
-        side: THREE.BackSide
-      })
-
-      const floorMaterial = new THREE.MeshStandardMaterial({
-        color: 0x661111,
-        roughness: 0.95,
-        metalness: 0.05
-      })
-
-      const tunnelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x882222,
+      // Floor - stomach lining (pink/flesh tone)
+      const floorGeom = new THREE.PlaneGeometry(100, 100)
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: 0xd4a5a5, // Pink flesh tone
         roughness: 0.85,
-        side: THREE.BackSide
+      })
+      const floor = new THREE.Mesh(floorGeom, floorMat)
+      floor.rotation.x = -Math.PI / 2
+      floor.position.y = 0
+      floor.receiveShadow = true
+      scene.add(floor)
+
+      // Ceiling - mucous membrane (darker pink)
+      const ceilingGeom = new THREE.PlaneGeometry(100, 100)
+      const ceilingMat = new THREE.MeshStandardMaterial({
+        color: 0xa07070,
+        roughness: 0.8,
+      })
+      const ceiling = new THREE.Mesh(ceilingGeom, ceilingMat)
+      ceiling.rotation.x = Math.PI / 2
+      ceiling.position.y = 12
+      scene.add(ceiling)
+
+      // Walls - intestinal walls (pink with slight texture)
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: 0xc99090,
+        roughness: 0.75,
       })
 
-      rooms.forEach((room, index) => {
-        // Create room as hollow box
-        const { width, height, depth } = room.size
+      // Front wall
+      const wallGeom = new THREE.PlaneGeometry(100, 12)
+      const frontWall = new THREE.Mesh(wallGeom, wallMat)
+      frontWall.position.set(0, 6, -50)
+      scene.add(frontWall)
 
-        // Floor
-        const floorGeom = new THREE.PlaneGeometry(width, depth)
-        const floor = new THREE.Mesh(floorGeom, floorMaterial)
-        floor.rotation.x = -Math.PI / 2
-        floor.position.copy(room.position)
-        floor.receiveShadow = true
-        scene.add(floor)
+      // Back wall
+      const backWall = new THREE.Mesh(wallGeom, wallMat.clone())
+      backWall.position.set(0, 6, 50)
+      backWall.rotation.y = Math.PI
+      scene.add(backWall)
 
-        // Ceiling
-        const ceilingGeom = new THREE.PlaneGeometry(width, depth)
-        const ceiling = new THREE.Mesh(ceilingGeom, wallMaterial.clone())
-        ceiling.material.side = THREE.FrontSide
-        ceiling.rotation.x = Math.PI / 2
-        ceiling.position.copy(room.position)
-        ceiling.position.y = height
-        scene.add(ceiling)
+      // Left wall
+      const sideWallGeom = new THREE.PlaneGeometry(100, 12)
+      const leftWall = new THREE.Mesh(sideWallGeom, wallMat.clone())
+      leftWall.position.set(-50, 6, 0)
+      leftWall.rotation.y = Math.PI / 2
+      scene.add(leftWall)
 
-        // Walls
-        // Front wall
-        const frontWallGeom = new THREE.PlaneGeometry(width, height)
-        const frontWall = new THREE.Mesh(frontWallGeom, wallMaterial.clone())
-        frontWall.material.side = THREE.FrontSide
-        frontWall.position.copy(room.position)
-        frontWall.position.z -= depth / 2
-        frontWall.position.y = height / 2
-        scene.add(frontWall)
+      // Right wall
+      const rightWall = new THREE.Mesh(sideWallGeom, wallMat.clone())
+      rightWall.position.set(50, 6, 0)
+      rightWall.rotation.y = -Math.PI / 2
+      scene.add(rightWall)
 
-        // Back wall
-        const backWallGeom = new THREE.PlaneGeometry(width, height)
-        const backWall = new THREE.Mesh(backWallGeom, wallMaterial.clone())
-        backWall.material.side = THREE.FrontSide
-        backWall.rotation.y = Math.PI
-        backWall.position.copy(room.position)
-        backWall.position.z += depth / 2
-        backWall.position.y = height / 2
-        scene.add(backWall)
-
-        // Left wall
-        const leftWallGeom = new THREE.PlaneGeometry(depth, height)
-        const leftWall = new THREE.Mesh(leftWallGeom, wallMaterial.clone())
-        leftWall.material.side = THREE.FrontSide
-        leftWall.rotation.y = Math.PI / 2
-        leftWall.position.copy(room.position)
-        leftWall.position.x -= width / 2
-        leftWall.position.y = height / 2
-        scene.add(leftWall)
-
-        // Right wall
-        const rightWallGeom = new THREE.PlaneGeometry(depth, height)
-        const rightWall = new THREE.Mesh(rightWallGeom, wallMaterial.clone())
-        rightWall.material.side = THREE.FrontSide
-        rightWall.rotation.y = -Math.PI / 2
-        rightWall.position.copy(room.position)
-        rightWall.position.x += width / 2
-        rightWall.position.y = height / 2
-        scene.add(rightWall)
-
-        // Create tunnels connecting to spawn room (index 0)
-        if (index > 0) {
-          const startPos = new THREE.Vector3(0, 1.5, 0)
-          const endPos = room.position.clone()
-          endPos.y = 1.5
-
-          const tunnelLength = startPos.distanceTo(endPos) - 8 // Subtract room overlap
-          const tunnelRadius = 2
-
-          const tunnelGeom = new THREE.CylinderGeometry(tunnelRadius, tunnelRadius, tunnelLength, 16, 1, true)
-          const tunnel = new THREE.Mesh(tunnelGeom, tunnelMaterial)
-
-          // Position tunnel between rooms
-          const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5)
-          tunnel.position.copy(midPoint)
-
-          // Rotate tunnel to connect rooms
-          const direction = endPos.clone().sub(startPos).normalize()
-          tunnel.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction)
-
-          scene.add(tunnel)
-        }
-      })
-
-      // Add some floating red blood cells for atmosphere
-      for (let i = 0; i < 30; i++) {
-        const rbcGeom = new THREE.TorusGeometry(0.3, 0.15, 8, 16)
-        const rbcMat = new THREE.MeshStandardMaterial({
-          color: 0xcc2222,
+      // Add rugae (stomach folds/ridges) on walls
+      for (let i = 0; i < 15; i++) {
+        const rugaeGeom = new THREE.TorusGeometry(48, 0.8, 8, 64, Math.PI)
+        const rugaeMat = new THREE.MeshStandardMaterial({
+          color: 0xb88080,
           roughness: 0.7,
-          transparent: true,
-          opacity: 0.6
         })
-        const rbc = new THREE.Mesh(rbcGeom, rbcMat)
+        const rugae = new THREE.Mesh(rugaeGeom, rugaeMat)
+        rugae.position.set(0, 1 + i * 0.7, 0)
+        rugae.rotation.x = Math.PI / 2
+        rugae.rotation.z = (i * 0.3) + Math.random() * 0.2
+        scene.add(rugae)
+      }
 
-        // Random position in level area
-        rbc.position.set(
-          (Math.random() - 0.5) * 50,
-          1 + Math.random() * 4,
-          (Math.random() - 0.5) * 50
+      // Add villi (intestinal finger-like projections) instead of pillars
+      for (let i = 0; i < 25; i++) {
+        const angle = Math.random() * Math.PI * 2
+        const radius = 10 + Math.random() * 35
+        const x = Math.cos(angle) * radius
+        const z = Math.sin(angle) * radius
+
+        // Villus - finger-like projection
+        const villusHeight = 2 + Math.random() * 4
+        const villusRadius = 0.4 + Math.random() * 0.4
+
+        // Create villus using capsule-like shape
+        const villusGeom = new THREE.CapsuleGeometry(villusRadius, villusHeight, 8, 16)
+        const villusMat = new THREE.MeshStandardMaterial({
+          color: 0xdfb0b0,
+          roughness: 0.6,
+          transparent: true,
+          opacity: 0.9,
+        })
+        const villus = new THREE.Mesh(villusGeom, villusMat)
+        villus.position.set(x, villusHeight / 2 + 0.5, z)
+        scene.add(villus)
+      }
+
+      // Add mucus patches on floor
+      for (let i = 0; i < 15; i++) {
+        const mucusGeom = new THREE.CircleGeometry(1.5 + Math.random() * 2, 16)
+        const mucusMat = new THREE.MeshStandardMaterial({
+          color: 0xcccc88, // Yellowish mucus
+          roughness: 0.4,
+          transparent: true,
+          opacity: 0.7,
+        })
+        const mucus = new THREE.Mesh(mucusGeom, mucusMat)
+        mucus.rotation.x = -Math.PI / 2
+        mucus.position.set(
+          (Math.random() - 0.5) * 80,
+          0.02,
+          (Math.random() - 0.5) * 80
         )
-        rbc.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+        scene.add(mucus)
+      }
 
-        // Store for animation
-        rbc.userData.rotationSpeed = {
-          x: (Math.random() - 0.5) * 0.5,
-          y: (Math.random() - 0.5) * 0.5,
-          z: (Math.random() - 0.5) * 0.5
+      // Add floating gastric bubbles (instead of red blood cells)
+      for (let i = 0; i < 40; i++) {
+        const bubbleSize = 0.2 + Math.random() * 0.4
+        const bubbleGeom = new THREE.SphereGeometry(bubbleSize, 12, 12)
+        const bubbleMat = new THREE.MeshStandardMaterial({
+          color: 0xbbddaa, // Slight greenish (stomach acid)
+          roughness: 0.2,
+          transparent: true,
+          opacity: 0.5,
+          metalness: 0.1,
+        })
+        const bubble = new THREE.Mesh(bubbleGeom, bubbleMat)
+
+        bubble.position.set(
+          (Math.random() - 0.5) * 80,
+          1 + Math.random() * 9,
+          (Math.random() - 0.5) * 80
+        )
+
+        bubble.userData.rotationSpeed = {
+          x: (Math.random() - 0.5) * 0.2,
+          y: (Math.random() - 0.5) * 0.2,
+          z: (Math.random() - 0.5) * 0.2
+        }
+        bubble.userData.floatOffset = Math.random() * Math.PI * 2
+        bubble.userData.floatSpeed = 0.5 + Math.random() * 0.5
+
+        scene.add(bubble)
+      }
+
+      // Add some food particle chunks floating
+      for (let i = 0; i < 20; i++) {
+        const chunkGeom = new THREE.DodecahedronGeometry(0.3 + Math.random() * 0.5, 0)
+        const chunkMat = new THREE.MeshStandardMaterial({
+          color: 0x998866, // Brownish food color
+          roughness: 0.8,
+        })
+        const chunk = new THREE.Mesh(chunkGeom, chunkMat)
+
+        chunk.position.set(
+          (Math.random() - 0.5) * 70,
+          0.5 + Math.random() * 3,
+          (Math.random() - 0.5) * 70
+        )
+        chunk.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+
+        chunk.userData.rotationSpeed = {
+          x: (Math.random() - 0.5) * 0.1,
+          y: (Math.random() - 0.5) * 0.1,
+          z: (Math.random() - 0.5) * 0.1
         }
 
-        scene.add(rbc)
+        scene.add(chunk)
       }
+
+      // Add point lights with warmer colors
+      const light1 = new THREE.PointLight(0xffaaaa, 0.4, 35)
+      light1.position.set(25, 5, 25)
+      scene.add(light1)
+
+      const light2 = new THREE.PointLight(0xffbbbb, 0.4, 35)
+      light2.position.set(-25, 5, -25)
+      scene.add(light2)
+
+      // Acid glow lights (greenish)
+      const acidLight1 = new THREE.PointLight(0xaaffaa, 0.2, 25)
+      acidLight1.position.set(0, 1, 0)
+      scene.add(acidLight1)
+
+      const acidLight2 = new THREE.PointLight(0xbbffbb, 0.15, 20)
+      acidLight2.position.set(30, 2, -30)
+      scene.add(acidLight2)
     }
 
     // Spawn bacteria in a room
     function spawnBacteriaInRoom(scene: THREE.Scene, room: Room, roomIndex: number): number {
-      const bacteriaCount = 3 + Math.floor(Math.random() * 3) // 3-5 per room
+      const bacteriaCount = 5 + Math.floor(Math.random() * 4) // 5-8 per room (more bacteria to make 100 pts achievable)
       const types = Object.keys(BACTERIA_TYPES)
 
       for (let i = 0; i < bacteriaCount; i++) {
@@ -399,13 +483,13 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         const group = new THREE.Group()
 
         if (typeKey === 'ecoli') {
-          // Rod-shaped (capsule-like)
+          // E. coli (Good) - Rod-shaped with flagella (green)
           const bodyGeom = new THREE.CapsuleGeometry(0.15, 0.4, 4, 8)
           const bodyMat = new THREE.MeshStandardMaterial({
             color: type.color,
             roughness: 0.6,
             emissive: type.color,
-            emissiveIntensity: 0.2
+            emissiveIntensity: 0.3
           })
           const body = new THREE.Mesh(bodyGeom, bodyMat)
           body.rotation.z = Math.PI / 2
@@ -414,26 +498,77 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
           // Add flagella (thin tails)
           for (let f = 0; f < 3; f++) {
             const flagellaGeom = new THREE.CylinderGeometry(0.02, 0.01, 0.5, 4)
-            const flagellaMat = new THREE.MeshStandardMaterial({ color: 0x66aa66 })
+            const flagellaMat = new THREE.MeshStandardMaterial({ color: 0x33aa33 })
             const flagella = new THREE.Mesh(flagellaGeom, flagellaMat)
             flagella.position.set(-0.35, 0, (f - 1) * 0.1)
             flagella.rotation.z = Math.PI / 2 + (Math.random() - 0.5) * 0.3
             group.add(flagella)
           }
-        } else {
-          // Streptococcus - chain of spheres
-          const chainLength = 4 + Math.floor(Math.random() * 3)
-          for (let c = 0; c < chainLength; c++) {
-            const sphereGeom = new THREE.SphereGeometry(0.1, 8, 8)
-            const sphereMat = new THREE.MeshStandardMaterial({
-              color: type.color,
-              roughness: 0.5,
-              emissive: type.color,
-              emissiveIntensity: 0.15
-            })
-            const sphere = new THREE.Mesh(sphereGeom, sphereMat)
-            sphere.position.set(c * 0.18 - (chainLength * 0.18) / 2, 0, 0)
-            group.add(sphere)
+        } else if (typeKey === 'lactobacillus') {
+          // Lactobacillus (Good) - Longer rod shape (cyan)
+          const bodyGeom = new THREE.CapsuleGeometry(0.1, 0.6, 4, 8)
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: type.color,
+            roughness: 0.5,
+            emissive: type.color,
+            emissiveIntensity: 0.3
+          })
+          const body = new THREE.Mesh(bodyGeom, bodyMat)
+          body.rotation.z = Math.PI / 2
+          group.add(body)
+        } else if (typeKey === 'salmonella') {
+          // Salmonella (Bad) - Rod with many flagella (red)
+          const bodyGeom = new THREE.CapsuleGeometry(0.12, 0.35, 4, 8)
+          const bodyMat = new THREE.MeshStandardMaterial({
+            color: type.color,
+            roughness: 0.4,
+            emissive: type.color,
+            emissiveIntensity: 0.4
+          })
+          const body = new THREE.Mesh(bodyGeom, bodyMat)
+          body.rotation.z = Math.PI / 2
+          group.add(body)
+
+          // Many flagella (dangerous looking)
+          for (let f = 0; f < 6; f++) {
+            const flagellaGeom = new THREE.CylinderGeometry(0.015, 0.008, 0.4, 4)
+            const flagellaMat = new THREE.MeshStandardMaterial({ color: 0xcc2222 })
+            const flagella = new THREE.Mesh(flagellaGeom, flagellaMat)
+            const angle = (f / 6) * Math.PI * 2
+            flagella.position.set(-0.25, Math.sin(angle) * 0.15, Math.cos(angle) * 0.15)
+            flagella.rotation.z = Math.PI / 2 + (Math.random() - 0.5) * 0.5
+            group.add(flagella)
+          }
+        } else if (typeKey === 'hpylori') {
+          // H. pylori (Bad) - Spiral/helical shape (orange)
+          const spiralPoints = []
+          for (let s = 0; s < 20; s++) {
+            const t = s / 19
+            spiralPoints.push(new THREE.Vector3(
+              t * 0.6 - 0.3,
+              Math.sin(t * Math.PI * 3) * 0.08,
+              Math.cos(t * Math.PI * 3) * 0.08
+            ))
+          }
+          const spiralCurve = new THREE.CatmullRomCurve3(spiralPoints)
+          const spiralGeom = new THREE.TubeGeometry(spiralCurve, 16, 0.06, 8, false)
+          const spiralMat = new THREE.MeshStandardMaterial({
+            color: type.color,
+            roughness: 0.4,
+            emissive: type.color,
+            emissiveIntensity: 0.4
+          })
+          const spiral = new THREE.Mesh(spiralGeom, spiralMat)
+          group.add(spiral)
+
+          // Add flagella at ends
+          for (let f = 0; f < 4; f++) {
+            const flagellaGeom = new THREE.CylinderGeometry(0.015, 0.008, 0.3, 4)
+            const flagellaMat = new THREE.MeshStandardMaterial({ color: 0xdd6600 })
+            const flagella = new THREE.Mesh(flagellaGeom, flagellaMat)
+            flagella.position.set(-0.35, (f - 1.5) * 0.05, 0)
+            flagella.rotation.z = Math.PI / 2 + (Math.random() - 0.5) * 0.4
+            group.add(flagella)
           }
         }
 
@@ -598,27 +733,25 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
       uniqueBacteria.forEach(index => {
         const bacteria = bacteriaRef.current[index]
         if (bacteria) {
-          // Update score
-          const newScore = score + bacteria.type.points
-          setScore(newScore)
-          onScoreUpdate(newScore)
+          // Update score (can be negative for good bacteria!)
+          setScore(prevScore => {
+            const newScore = Math.max(0, prevScore + bacteria.type.points) // Don't go below 0
+            onScoreUpdate(newScore)
+
+            // Check for completion at 100 points
+            if (newScore >= 100 && !gameComplete) {
+              setGameComplete(true)
+              onComplete(100)
+            }
+
+            return newScore
+          })
 
           // Show educational fact
           showFact(bacteria.type.fact)
 
           // Track killed count
-          setBacteriaKilled(prev => {
-            const newCount = prev + 1
-            // Check for completion (80% killed)
-            const completionThreshold = Math.ceil(totalBacteria * 0.8)
-            if (newCount >= completionThreshold && !gameComplete) {
-              setGameComplete(true)
-              const bonusScore = newScore + 50
-              setScore(bonusScore)
-              onComplete(Math.min(100, bonusScore))
-            }
-            return newCount
-          })
+          setBacteriaKilled(prev => prev + 1)
 
           // Remove from scene
           sceneRef.current!.remove(bacteria.mesh)
@@ -714,18 +847,6 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
     }
   }, []) // Run once on mount
 
-  // Sync score with state for completion check
-  useEffect(() => {
-    if (bacteriaKilled > 0 && totalBacteria > 0) {
-      const completionThreshold = Math.ceil(totalBacteria * 0.8)
-      if (bacteriaKilled >= completionThreshold && !gameComplete) {
-        setGameComplete(true)
-        const bonusScore = score + 50
-        setScore(bonusScore)
-        onComplete(Math.min(100, bonusScore))
-      }
-    }
-  }, [bacteriaKilled, totalBacteria, score, gameComplete, onComplete])
 
   return (
     <div className="w-full h-[600px] relative select-none">
@@ -742,9 +863,9 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
 
       {/* Controls Help */}
       <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 border border-gray-300 shadow-lg max-w-xs">
-        <h3 className="text-gray-900 font-bold mb-2">Bacteria Hunter</h3>
+        <h3 className="text-gray-900 font-bold mb-2">Gut Defender</h3>
         <p className="text-gray-700 text-sm mb-3">
-          Navigate the bloodstream and eliminate harmful bacteria!
+          Explore the digestive system and eliminate harmful bacteria!
         </p>
         <div className="text-xs text-gray-600 space-y-1">
           <p><span className="font-semibold">WASD</span> - Move</p>
@@ -771,7 +892,7 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
           <div className="text-white text-center pointer-events-none">
             <div className="text-6xl mb-4">🦠</div>
             <p className="text-2xl font-bold mb-2">Click to Start</p>
-            <p className="text-sm text-gray-300">Click anywhere to begin hunting bacteria</p>
+            <p className="text-sm text-gray-300">Enter the digestive system and hunt harmful bacteria!</p>
           </div>
         </div>
       )}
@@ -788,9 +909,9 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
         <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
           <div className="bg-white rounded-xl p-8 text-center max-w-sm">
             <div className="text-5xl mb-4">🎉</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Mission Complete!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Gut Defended!</h2>
             <p className="text-gray-600 mb-4">
-              You eliminated {bacteriaKilled} bacteria and helped defend the body!
+              You eliminated {bacteriaKilled} harmful bacteria and protected the digestive system!
             </p>
             <p className="text-3xl font-bold text-cyan-600">Score: {score}</p>
           </div>
@@ -799,15 +920,33 @@ export default function BacteriaHunter({ onScoreUpdate, onComplete }: BacteriaHu
 
       {/* Bacteria Types Legend */}
       <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 border border-gray-300 shadow-lg">
-        <p className="text-xs text-gray-500 mb-2">Bacteria Types:</p>
-        <div className="flex gap-4 text-xs">
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#88ff88' }} />
-            <span className="text-gray-700">E. coli (10 pts)</span>
+        <p className="text-xs text-gray-500 mb-2">Reach 100 points to win!</p>
+        <div className="space-y-2 text-xs">
+          <div>
+            <p className="text-red-600 font-semibold mb-1">BAD - Shoot these! (+10 pts)</p>
+            <div className="flex gap-3">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff4444' }} />
+                <span className="text-gray-700">Salmonella</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff8800' }} />
+                <span className="text-gray-700">H. pylori</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ff88ff' }} />
-            <span className="text-gray-700">Streptococcus (25 pts)</span>
+          <div>
+            <p className="text-green-600 font-semibold mb-1">GOOD - Don&apos;t shoot! (-10 pts)</p>
+            <div className="flex gap-3">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#44dd44' }} />
+                <span className="text-gray-700">E. coli</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#44ccdd' }} />
+                <span className="text-gray-700">Lactobacillus</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
